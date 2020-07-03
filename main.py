@@ -1,6 +1,5 @@
 import os
 import yaml
-import random 
 import argparse
 import numpy as np
 
@@ -14,6 +13,11 @@ from tasks.two_step import TwoStepTask
 from tqdm import tqdm 
 from collections import namedtuple
 
+SEED = 1111
+T.manual_seed(SEED)
+np.random.seed(SEED)
+T.random.manual_seed(SEED)
+
 Rollout = namedtuple('Rollout',
                         ('state', 'action', 'reward', 'done', 'log_prob_a', 'value'))
 
@@ -21,15 +25,15 @@ class Trainer:
     def __init__(self, config):
         self.device = 'cpu'
 
-        self.env = TwoStepTask(config["Task"])  
-        self.model = A2C_LSTM(config["A2C"], self.env.feat_size, self.env.num_actions).to(self.device)
+        self.env = TwoStepTask(config["task"])  
+        self.model = A2C_LSTM(config["a2c"], self.env.feat_size, self.env.num_actions).to(self.device)
 
-        self.optim = T.optim.AdamW(self.model.parameters(), lr=config["A2C"]["lr"], weight_decay=config["A2C"]["weight-decay"])
+        self.optim = T.optim.RMSprop(self.model.parameters(), lr=config["a2c"]["lr"], weight_decay=config["a2c"]["weight-decay"])
 
-        self.val_coeff = config["A2C"]["val-loss-weight"]
-        self.entropy_coeff = config["A2C"]["entropy-weight"]
-        self.max_grad_norm = config["A2C"]["max-grad-norm"]
-        self.switch_p = config["Task"]["swtich-prob"]
+        self.val_coeff = config["a2c"]["val-loss-weight"]
+        self.entropy_coeff = config["a2c"]["entropy-weight"]
+        self.max_grad_norm = config["a2c"]["max-grad-norm"]
+        self.switch_p = config["task"]["swtich-prob"]
 
         self.writer = SummaryWriter(log_dir=os.path.join("logs", config["run-title"]))
         self.save_path = os.path.join(config["save-path"], config["run-title"], config["run-title"]+"_{epi:04d}.pt")
@@ -49,8 +53,6 @@ class Trainer:
         log_probs = T.tensor(batch.log_prob_a, device=self.device)
         bootstrap = T.tensor([bootstrap_value], device=self.device).float()
 
-        # here we take the rewards and values from the rollout, and use them to 
-        # generate the advantage and discounted returns. 
         # the advantage function uses "Generalized Advantage Estimation"
         dones_plus = T.cat((dones, T.tensor([True], device=self.device)), dim=-1)
         rewards_plus = T.cat((rewards, bootstrap), dim=-1)
@@ -71,7 +73,7 @@ class Trainer:
     def run_episode(self, episode):
         done = False 
         total_reward, total_entropy = 0, 0
-        p_action, p_reward, timestep = 0, 0, 0
+        p_action, p_reward, timestep = [0,0], 0, 0
 
         state = self.env.reset()
         mem_state = self.model.init_state(device=self.device)
@@ -85,8 +87,8 @@ class Trainer:
             # sample action using model
             action_dist, val_estimate, mem_state = self.model((
                 T.tensor(state,    device=self.device).float(), 
+                T.tensor(p_action, device=self.device).float(),  
                 T.tensor([p_reward], device=self.device).float(),  
-                T.tensor([p_action], device=self.device).float(),  
                 T.tensor([timestep], device=self.device).float(), 
                 mem_state
             ))
@@ -110,7 +112,7 @@ class Trainer:
 
             state = new_state
             p_reward = reward
-            p_action = action 
+            p_action = np.eye(2)[action.item()]
 
             total_reward += reward
             total_entropy += entropy
@@ -118,7 +120,7 @@ class Trainer:
         return total_reward, total_entropy, buffer
 
 
-    def train(self, max_episodes, gamma):
+    def train(self, max_episodes, gamma, save_interval):
 
         total_rewards = np.zeros(max_episodes)
 
@@ -139,11 +141,9 @@ class Trainer:
             avg_reward = total_rewards[max(0, episode-100):(episode+1)].mean()
             self.writer.add_scalar("rewards/reward_t", reward, episode)
             self.writer.add_scalar("rewards/avg_reward_100", avg_reward, episode)
-            # print(f"Episode {episode}/{max_episodes} | Reward: {reward} | Last 100: {avg_reward}", end="\r")
+            progress.set_description(f"Episode {episode}/{max_episodes} | Reward: {reward} | Last 100: {avg_reward:.4f}")
 
-            progress.set_description(f"Episode {episode}/{max_episodes} | Reward: {reward} | Last 100: {avg_reward}")
-
-            if (episode+1) % 2500 == 0:
+            if (episode+1) % save_interval == 0:
                 T.save({
                     "state_dict": self.model.state_dict(),
                     "avg_reward": avg_reward,
@@ -169,6 +169,6 @@ if __name__ == "__main__":
          yaml.dump(config, fout)
 
     trainer = Trainer(config)
-    trainer.train(config["Task"]["train-episodes"], config["A2C"]["gamma"])
+    trainer.train(config["task"]["train-episodes"], config["a2c"]["gamma"], config["save-interval"])
 
     

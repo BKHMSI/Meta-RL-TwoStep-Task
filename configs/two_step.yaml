@@ -1,16 +1,17 @@
-run-title: TwoStep_1
+run-title: TwoStep_4
 save-path: ckpt
+save-interval: 5000
 
-Task:
+task:
   common-prob: 0.8
   reward-prob: 0.9
   swtich-prob: 0.025
 
-  train-episodes: 20000
-  trials-per-epi: 200
+  train-episodes: 20_000
+  trials-per-epi: 100
   test-episodes: 300
 
-A2C:
+a2c:
   mem-units: 48
   
   val-loss-weight: 0.05
@@ -19,5 +20,5 @@ A2C:
   
   gamma: .90
   lr: 7.e-4
-  weight-decay: 1.e-4
+  weight-decay: 0
 
