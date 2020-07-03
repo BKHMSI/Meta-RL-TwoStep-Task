@@ -1,5 +1,6 @@
 import os
 import yaml
+import scipy.signal
 import argparse
 import numpy as np
 
@@ -41,25 +42,29 @@ class Trainer:
     def a2c_loss(self, buffer, gamma, entropy, bootstrap_value=0):
 
 
-        def discount(rewards, masks):
-            d_reward = T.tensor([gamma**i * rewards[i] * masks[i] for i in range(len(rewards))], device=self.device)
-            return T.flip(T.cumsum(T.flip(d_reward, [0]), 0), [0])
+        # def discount(rewards, masks):
+        #     d_reward = T.tensor([gamma**i * rewards[i] * masks[i] for i in range(len(rewards))], device=self.device)
+        #     return T.flip(T.cumsum(T.flip(d_reward, [0]), 0), [0])
+
+        def discount(data):
+            data = data.numpy()
+            return T.tensor(scipy.signal.lfilter([1], [1, -gamma], data[::-1], axis=0)[::-1].copy(), device=self.device)
 
         batch = Rollout(*zip(*buffer))
 
-        dones = T.tensor(batch.done, device=self.device)
+        # dones = T.tensor(batch.done, device=self.device)
         values = T.tensor(batch.value, device=self.device)
         rewards = T.tensor(batch.reward, device=self.device).float()
         log_probs = T.tensor(batch.log_prob_a, device=self.device)
         bootstrap = T.tensor([bootstrap_value], device=self.device).float()
 
         # the advantage function uses "Generalized Advantage Estimation"
-        dones_plus = T.cat((dones, T.tensor([True], device=self.device)), dim=-1)
+        # dones_plus = T.cat((dones, T.tensor([True], device=self.device)), dim=-1)
         rewards_plus = T.cat((rewards, bootstrap), dim=-1)
-        discounted_rewards = discount(rewards_plus, ~dones_plus)[:-1]
+        discounted_rewards = discount(rewards_plus)[:-1]
         value_plus = T.cat((values, bootstrap), dim=-1)
-        advantages = rewards + gamma * value_plus[1:] * (~dones) - value_plus[:-1]
-        advantages = discount(advantages, ~dones)
+        advantages = rewards + gamma * value_plus[1:] - value_plus[:-1]
+        advantages = discount(advantages)
 
         # calculate losses
         value_loss = 0.5 * (discounted_rewards - values).sum()
