@@ -1,0 +1,23 @@
+run-title: TwoStep_1
+save-path: ckpt
+
+Task:
+  common-prob: 0.8
+  reward-prob: 0.9
+  swtich-prob: 0.025
+
+  train-episodes: 20000
+  trials-per-epi: 200
+  test-episodes: 300
+
+A2C:
+  mem-units: 48
+  
+  val-loss-weight: 0.05
+  entropy-weight: 0.05
+  max-grad-norm: 999
+  
+  gamma: .90
+  lr: 7.e-4
+  weight-decay: 1.e-4
+
