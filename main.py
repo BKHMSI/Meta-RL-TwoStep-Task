@@ -14,7 +14,7 @@ from tasks.two_step import TwoStepTask
 from tqdm import tqdm 
 from collections import namedtuple
 
-SEED = 1111
+SEED = 2020
 T.manual_seed(SEED)
 np.random.seed(SEED)
 T.random.manual_seed(SEED)
@@ -67,7 +67,7 @@ class Trainer:
         advantages = discount(advantages)
 
         # calculate losses
-        value_loss = 0.5 * (discounted_rewards - values).sum()
+        value_loss = 0.5 * ((discounted_rewards - values)**2).sum()
         policy_loss = -(log_probs * advantages).sum()
 
         loss = self.val_coeff * value_loss + policy_loss - self.entropy_coeff * entropy
