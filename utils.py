@@ -1,3 +1,4 @@
+import pickle
 import torch as T
 import numpy as np
 
@@ -90,3 +91,14 @@ def compute_a2c_loss(probs, values, returns):
     loss_policy = T.stack(policy_grads).sum()
     loss_value = T.stack(value_losses).sum()
     return loss_policy, loss_value
+
+
+
+def load_data(filename):
+    with open(filename + ".dat", 'rb') as fin:
+        data = pickle.load(fin)
+    return data 
+
+def save_data(filename, data):
+    with open(filename + ".dat", "wb") as fout:
+        pickle.dump(data, fout)

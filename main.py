@@ -1,26 +1,29 @@
 import os
 import yaml
-import scipy.signal
+import pickle
 import argparse
-import numpy as np
+import scipy.signal
 
+import numpy as np
 import torch as T
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
-from models.a2c_lstm import A2C_LSTM
-from tasks.two_step import TwoStepTask
-
 from tqdm import tqdm 
 from collections import namedtuple
 
-SEED = 2020
+from models.a2c_lstm import A2C_LSTM
+from tasks.two_step import TwoStepTask
+from utils import save_data
+
+
+SEED = 1001
 T.manual_seed(SEED)
 np.random.seed(SEED)
 T.random.manual_seed(SEED)
 
 Rollout = namedtuple('Rollout',
-                        ('state', 'action', 'reward', 'done', 'log_prob_a', 'value'))
+                        ('state', 'action', 'reward', 'done', 'log_prob_a', 'policy', 'value'))
 
 class Trainer: 
     def __init__(self, config):
@@ -98,7 +101,7 @@ class Trainer:
                 mem_state
             ))
 
-            action_cat = T.distributions.Categorical(action_dist)
+            action_cat = T.distributions.Categorical(action_dist.squeeze())
             action = action_cat.sample()
             entropy = action_cat.entropy().mean()
             log_prob_a = action_cat.log_prob(action)
@@ -109,9 +112,10 @@ class Trainer:
             buffer += [Rollout(
                 state, 
                 reward,
-                action,
+                action.item(),
                 done,
                 log_prob_a,
+                action_dist[0].detach().numpy(),
                 val_estimate.item()
             )]
 
@@ -130,10 +134,12 @@ class Trainer:
         total_rewards = np.zeros(max_episodes)
 
         progress = tqdm(range(max_episodes))
+        episode_cache = []
         for episode in progress:
 
             reward, entropy, buffer = self.run_episode(episode)
-            
+            episode_cache += [(reward, entropy, buffer)]
+
             self.optim.zero_grad()
             loss = self.a2c_loss(buffer, gamma, entropy) 
             loss.backward()
@@ -154,6 +160,7 @@ class Trainer:
                     "avg_reward": avg_reward,
                 }, self.save_path.format(epi=episode+1))
 
+        save_data(filename="episode_cache_10", data=episode_cache)
 
 
 if __name__ == "__main__":

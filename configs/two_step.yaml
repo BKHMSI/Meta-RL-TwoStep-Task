@@ -1,6 +1,6 @@
-run-title: TwoStep_9
+run-title: TwoStep_10
 save-path: ckpt
-save-interval: 10_000
+save-interval: 5000
 
 task:
   common-prob: 0.8
@@ -12,7 +12,7 @@ task:
   test-episodes: 300
 
 a2c:
-  mem-units: 128
+  mem-units: 48
   
   val-loss-weight: 0.05
   entropy-weight: 0.05
