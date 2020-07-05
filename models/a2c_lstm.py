@@ -3,6 +3,7 @@ import numpy as np
 import torch as T
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Variable
 
 
 def ortho_weights(shape, scale=1.):
@@ -38,7 +39,7 @@ class A2C_LSTM(nn.Module):
         
         self.actor = nn.Linear(config["mem-units"], num_actions)
         self.critic = nn.Linear(config["mem-units"], 1)
-        self.working_memory = nn.LSTMCell(input_dim, config["mem-units"])
+        self.working_memory = nn.LSTM(input_dim, config["mem-units"])
 
         # intialize actor and critic weights
         self.actor.weight.data = normalized_columns_initializer(self.actor.weight.data, 0.01)
@@ -50,13 +51,14 @@ class A2C_LSTM(nn.Module):
         state, p_action, p_reward, timestep, mem_state = data 
         p_input = T.cat((state, p_action, p_reward, timestep), dim=-1)
     
-        h_t, c_t = self.working_memory(p_input.unsqueeze(0), mem_state)
+        h_t, mem_state = self.working_memory(p_input.unsqueeze(1), mem_state)
+
         action_dist = F.softmax(self.actor(h_t), dim=-1)
         value_estimate = self.critic(h_t)
 
-        return action_dist, value_estimate, (h_t, c_t)
+        return action_dist, value_estimate, mem_state
 
     def init_state(self, device):
-        h0 = T.zeros(1, self.working_memory.hidden_size).float().to(device)
-        c0 = T.zeros(1, self.working_memory.hidden_size).float().to(device)
+        h0 = T.zeros(1, 1, self.working_memory.hidden_size).float().to(device)
+        c0 = T.zeros(1, 1, self.working_memory.hidden_size).float().to(device)
         return (h0, c0)

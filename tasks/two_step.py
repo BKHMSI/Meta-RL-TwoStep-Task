@@ -1,5 +1,6 @@
 
 import numpy as np
+import matplotlib.pyplot as plt 
 
 # constants
 S_0 = 0
@@ -32,8 +33,7 @@ class TwoStepTask:
         # keep track of stay probability 
         self.transition_count = np.zeros((2,2,2))
         self.reset()
-        
-   
+    
     def encode_state(self):
         return np.eye(N_STATES)[self.state]
 
@@ -72,6 +72,28 @@ class TwoStepTask:
         action_count = self.transition_count.sum(axis=2)
         return self.transition_count / action_count[:, :, np.newaxis]
 
+    def plot(self, save_path, title="Two-Step Task"):
+        _, ax = plt.subplots()
+
+        ax.set_ylim([0.0, 1.0])
+        ax.set_ylabel('Stay Probability')
+        ax.set_title(title)
+        
+        stay_probs = self.compute_stay_prob()
+        
+        common = [stay_probs[0,0,0],stay_probs[1,0,0]]
+        uncommon = [stay_probs[0,1,0],stay_probs[1,1,0]]
+        
+        ax.set_xticks([1.3,3.3])
+        ax.set_xticklabels(['Last trial rewarded', 'Last trial not rewarded'])
+        
+        c = plt.bar([1,3],  common, color='b', width=0.5)
+        uc = plt.bar([1.8,3.8], uncommon, color='r', width=0.5)
+        ax.legend( (c[0], uc[0]), ('common', 'uncommon') )
+        plt.savefig(save_path + ".png")
+        np.save(save_path + ".npy", stay_probs)
+      
+
     def reset(self):
         self.timestep = 0
         
@@ -84,6 +106,9 @@ class TwoStepTask:
         
         return self.encode_state()
 
+    def reset_transition_count(self):
+        self.transition_count = np.zeros((2,2,2))
+
     def _stage_1(self, action):
         # act and update stage
         self.state = S_1 if (np.random.uniform() < self.transitions[action][0]) else S_2
@@ -95,8 +120,8 @@ class TwoStepTask:
         self.last_action = action
         self.last_is_common = self.is_common(action, self.state-1) 
 
-        new_state = self.encode_state()
-        return new_state
+        # return encoding of new state
+        return self.encode_state()
 
     def _stage_2(self):
         # get probability of reward in stage
