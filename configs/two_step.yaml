@@ -1,16 +1,18 @@
-run-title: TwoStep_29
-seed: 2020
+run-title: TwoStep_60
+seed: 1995
 save-path: ckpt
 save-interval: 10_000
 resume: false
 start-episode: 20_000
+train: true
+test: true
 
 task:
   common-prob: 0.8
   reward-prob: 0.9
   swtich-prob: 0.025
 
-  train-episodes: 30_000
+  train-episodes: 10_000
   trials-per-epi: 100
   test-episodes: 300
 
@@ -19,7 +21,7 @@ a2c:
   
   value-loss-weight: 0.05
   entropy-weight: 0.05
-  max-grad-norm: 1200
+  max-grad-norm: 999.
   
   gamma: .90
   lr: 7.e-4

@@ -13,7 +13,7 @@ class TwoStepTask:
         # start state
         self.state = S_0
 
-        # feature dimension: (onehot state, onehot action, timestep, reward)
+        # feature dimension: (onehot state [3], onehot action [2], timestep [1], reward [1])
         self.feat_size = 7
         
         # defines the stage with the highest expected reward, initially random
@@ -48,48 +48,39 @@ class TwoStepTask:
         if np.random.uniform() < switch_p and self.state == S_0:
             self.highest_reward_state = S_1 if (self.highest_reward_state == S_2) else S_2
             
-    def reward_probs(self):
-        """probability of reward of states S_1 and S_2, in the form [[p, 1-p], [1-p, p]]
-        """
-        r_prob = self.r_prob if self.highest_reward_state == S_1 else 1-self.r_prob
-        rewards = np.array([
-            [r_prob, 1-r_prob],
-            [1-r_prob, r_prob]
-        ])
-        return rewards
-            
     def is_common(self, action, state):
         return self.transitions[action][state] >= 0.5
         
     def update_stay_prob(self, action):
         self.transition_count[
-            self.last_is_rewarded,
-            self.last_is_common,
-            self.last_action
+            int(not self.last_is_rewarded),
+            int(not self.last_is_common),
+            int(not (self.last_action == action))
         ] += 1
  
     def compute_stay_prob(self):
-        action_count = self.transition_count.sum(axis=2)
+        # stay_prob[r,c,a] = P[r,c,a] / (P[r,c,a] + P[r,c,~a]) 
+        action_count = self.transition_count.sum(axis=-1)
         return self.transition_count / action_count[:, :, np.newaxis]
 
     def plot(self, save_path, title="Two-Step Task"):
         _, ax = plt.subplots()
 
-        ax.set_ylim([0.0, 1.0])
+        ax.set_ylim([0.5, 1.0])
         ax.set_ylabel('Stay Probability')
         ax.set_title(title)
         
         stay_probs = self.compute_stay_prob()
         
-        common = [stay_probs[0,0,0],stay_probs[1,0,0]]
-        uncommon = [stay_probs[0,1,0],stay_probs[1,1,0]]
+        common = [stay_probs[0,0,0], stay_probs[1,0,0]]
+        uncommon = [stay_probs[0,1,0], stay_probs[1,1,0]]
         
-        ax.set_xticks([1.3,3.3])
-        ax.set_xticklabels(['Last trial rewarded', 'Last trial not rewarded'])
+        ax.set_xticks([1.5,3.5])
+        ax.set_xticklabels(['Rewarded', 'Unrewarded'])
         
-        c = plt.bar([1,3],  common, color='b', width=0.5)
-        uc = plt.bar([1.8,3.8], uncommon, color='r', width=0.5)
-        ax.legend( (c[0], uc[0]), ('common', 'uncommon') )
+        c = plt.bar([1,3], common, color='b', width=0.5)
+        uc = plt.bar([2,4], uncommon, color='r', width=0.5)
+        ax.legend( (c[0], uc[0]), ('Common', 'Uncommon') )
         plt.savefig(save_path + ".png")
         np.save(save_path + ".npy", stay_probs)
       

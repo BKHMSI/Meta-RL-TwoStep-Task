@@ -6,26 +6,19 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 
 
-def ortho_weights(shape, scale=1.):
+def ortho_init(weights, scale=1.):
     """ PyTorch port of ortho_init from baselines.a2c.utils """
-    shape = tuple(shape)
+    shape = tuple(weights.size())
+    flat_shape = shape[1], shape[0]
 
-    if len(shape) == 2:
-        flat_shape = shape[1], shape[0]
-    elif len(shape) == 4:
-        flat_shape = (np.prod(shape[1:]), shape[0])
-    else:
-        raise NotImplementedError
+    a = T.tensor(np.random.normal(0., 1., flat_shape))
 
-    a = np.random.normal(0., 1., flat_shape)
-    u, _, v = np.linalg.svd(a, full_matrices=False)
-    q = u if u.shape == flat_shape else v
-    q = q.transpose().copy().reshape(shape)
+    u, _, v = T.svd(a)
+    t = u if u.shape == flat_shape else v
+    t = t.transpose(1,0).reshape(shape).float()
 
-    if len(shape) == 2:
-        return T.from_numpy((scale * q).astype(np.float32))
-    if len(shape) == 4:
-        return T.from_numpy((scale * q[:, :shape[1], :shape[2]]).astype(np.float32))
+    return scale * t
+
 
 def normalized_columns_initializer(weights, std=1.0):
     out = T.randn(weights.size())
@@ -41,15 +34,21 @@ class A2C_LSTM(nn.Module):
         self.critic = nn.Linear(config["mem-units"], 1)
         self.working_memory = nn.LSTM(input_dim, config["mem-units"])
 
+        self.h0 = nn.Parameter(T.randn(1, 1, self.working_memory.hidden_size).float())
+        self.c0 = nn.Parameter(T.randn(1, 1, self.working_memory.hidden_size).float())
+
         # intialize actor and critic weights
-        self.actor.weight.data = normalized_columns_initializer(self.actor.weight.data, 0.01)
+        self.actor.weight.data = ortho_init(self.actor.weight.data, 0.01)
         self.actor.bias.data.fill_(0)
-        self.critic.weight.data = normalized_columns_initializer(self.critic.weight.data, 1.0)
+        self.critic.weight.data = ortho_init(self.critic.weight.data, 1.0)
         self.critic.bias.data.fill_(0)
         
     def forward(self, data):
         state, p_action, p_reward, timestep, mem_state = data 
         p_input = T.cat((state, p_action, p_reward, timestep), dim=-1)
+
+        if mem_state is None:
+            mem_state = (self.h0, self.c0)
     
         h_t, mem_state = self.working_memory(p_input.unsqueeze(1), mem_state)
 
@@ -58,7 +57,5 @@ class A2C_LSTM(nn.Module):
 
         return action_dist, value_estimate, mem_state
 
-    def init_state(self, device):
-        h0 = T.zeros(1, 1, self.working_memory.hidden_size).float().to(device)
-        c0 = T.zeros(1, 1, self.working_memory.hidden_size).float().to(device)
-        return (h0, c0)
+    def init_state(self, device, scale=.1):
+        return (self.h0, self.c0)
