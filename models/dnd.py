@@ -143,7 +143,6 @@ class DND:
 
 """helpers"""
 
-
 def compute_similarities(query_key, key_list, metric):
     """Compute the similarity between query vs. key_i for all i
         i.e. compute q M, w/ q: 1 x key_dim, M: key_dim x #keys

@@ -17,6 +17,8 @@ from torch import nn
 from torch import Tensor
 from torch.nn import functional as F
 
+from ep_lstm import EpLSTMCell_Builder
+
 # constants 
 N_GATES = 5
 GateSpans = namedtuple('GateSpans', ['I', 'F', 'G', 'O', 'R'])
@@ -27,7 +29,6 @@ ACTIVATIONS = {
     'hard_tanh': nn.Hardtanh(),
     'relu': nn.ReLU(),
 }
-
 
 class EpLSTMCell:
     def __repr__(self):
@@ -134,15 +135,14 @@ class EpLSTMCell:
             outs = self.recurrent_kernel(h_tm1).chunk(N_GATES, -1)
         return outs
 
-    def forward(self, inputs, state):
+    def forward(self, xt, mt, state):
         # type: (Tuple[Tensor, Tensor], Tuple[Tensor, Tensor]) -> Tuple[Tensor, Tuple[Tensor, Tensor]]
         #^ inputs.xt : [b i]
         #^ state.h : [b h]
 
-        (x_t, mem_t) = inputs 
         (h_tm1, c_tm1) = state
 
-        Xi, Xf, Xg, Xo, Xr = self.apply_input_kernel(x_t)
+        Xi, Xf, Xg, Xo, Xr = self.apply_input_kernel(xt)
         Hi, Hf, Hg, Ho, Hr = self.apply_recurrent_kernel(h_tm1)
 
         ft = self.fun_rec(Xf + Hf)
@@ -152,32 +152,33 @@ class EpLSTMCell:
         else:
             it = self.fun_rec(Xi + Hi)
 
-        gt = T.tanh(Xg + Hg) # * np.sqrt(3)
+        gt = T.tanh(Xg + Hg) 
         if self.recurrent_dropout_mode == 'semeniuta':
             #* https://arxiv.org/abs/1603.05118
             gt = self.recurrent_dropout(gt)
 
         rt = self.fun_rec(Xr + Hr)
 
-        ct = (ft * c_tm1) + (it * gt) + (rt * T.tanh(mem_t))
+        ct = (ft * c_tm1) + (it * gt) + (rt * T.tanh(mt))
 
         ht = ot * T.tanh(ct)
 
         return ht, (ht, ct)
 
     @T.jit.export
-    def loop(self, inputs, state_t0, mask=None):
-        # type: (List[Tensor], Tuple[Tensor, Tensor], Optional[List[Tensor]]) -> Tuple[List[Tensor], Tuple[Tensor, Tensor]]
+    def loop(self, inputs, memories, state_t0, mask=None):
+        # type: (List[Tensor], List[Tensor], Tuple[Tensor, Tensor], Optional[List[Tensor]]) -> Tuple[List[Tensor], Tuple[Tensor, Tensor]]
         '''
         This loops over t (time) steps
         '''
         #^ inputs      : t * [b i]
+        #^ memories    : t * [b i]
         #^ state_t0[i] : [b s]
         #^ out         : [t b h]
         state = state_t0
         outs = []
-        for xt in inputs:
-            ht, state = self(xt, state)
+        for xt, mt in zip(inputs, memories):
+            ht, state = self.forward(xt, mt, state)
             outs.append(ht)
 
         return outs, state

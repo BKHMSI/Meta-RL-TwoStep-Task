@@ -57,19 +57,20 @@ class EpLSTM_Layer(nn.Module):
         self.cell_: EpLSTMCell = cell
 
     @T.jit.ignore
-    def forward(self, input, state_t0):
+    def forward(self, inputs, state_t0):
+        x_t, m_t = inputs 
         if self.batch_first[0]:
-        #^ input : [b t i]
-            input = input.transpose(1, 0)
-        #^ input : [t b i]
-        inputs = input.unbind(0)
+        #^ x_t : [b t i]
+            x_t = x_t.transpose(1, 0)
+        #^ x_t : [t b i]
+        x_t = x_t.unbind(0)
 
         if state_t0 is None:
-            state_t0 = self.cell_.get_init_state(input)
+            state_t0 = self.cell_.get_init_state(x_t)
     
-        inputs = self.reorder_inputs(inputs)
+        x_t = self.reorder_inputs(x_t)
 
-        sequence, state = self.cell_.loop(inputs, state_t0)
+        sequence, state = self.cell_.loop(x_t, m_t, state_t0)
    
         #^ sequence : t * [b h]
         sequence = self.reorder_inputs(sequence)

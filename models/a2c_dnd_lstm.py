@@ -108,6 +108,9 @@ class A2C_DND_LSTM(nn.Module):
     def save_memory(self, mem_key, mem_val):
         self.dnd.save_memory(mem_key, mem_val)
 
+    def retrieve_memory(self, query_key):
+        return self.dnd.get_memory(query_key)
+
     def get_all_mems(self):
         n_mems = len(self.dnd.keys)
         K = [self.dnd.keys[i] for i in range(n_mems)]
