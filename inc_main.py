@@ -15,7 +15,6 @@ from collections import namedtuple
 
 from models.a2c_lstm import A2C_LSTM
 from tasks.two_step import TwoStepTask
-from utils import save_data, load_data
 
 Rollout = namedtuple('Rollout',
                         ('state', 'action', 'reward', 'timestep', 'done', 'policy', 'value'))
@@ -41,8 +40,6 @@ class Trainer:
         self.start_episode = 0
 
         self.writer = SummaryWriter(log_dir=os.path.join("logs", config["run-title"]))
-        # self.writer.add_hparams(hparam_dict=config)
-
         self.save_path = os.path.join(config["save-path"], config["run-title"], config["run-title"]+"_{epi:04d}")
 
         if config["resume"]:
@@ -210,8 +207,9 @@ if __name__ == "__main__":
         config = yaml.load(fin, Loader=yaml.FullLoader)
 
     n_seeds = 8
+    base_run_title = config["run-title"]
     for seed_idx in range(1, n_seeds + 1):
-        config["run-title"] = config["run-title"] + f"_{seed_idx}"
+        config["run-title"] = base_run_title + f"_{seed_idx}"
         config["seed"] = 1111 * seed_idx
         
         exp_path = os.path.join(config["save-path"], config["run-title"])
