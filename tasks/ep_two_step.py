@@ -37,30 +37,28 @@ class EpTwoStepTask(TwoStepTask):
         state = self.encode_state()
         return state, uncue 
 
-    def _binary2int(self, binary):
-        return binary.dot(1 << np.arange(binary.shape[-1] - 1, -1, -1))
-
     def _generate_context(self):
         return np.random.randint(2, size=self.ctx_len)
 
     def _generate_uncue(self):
         return np.ones(self.ctx_len) * -1
 
-    def _stage_2(self, context):
+    def _stage_2(self):
         # reward based on which part in the trial
-        if self.timestep < 50:
-            r_prob = self.r_prob if (self.highest_reward_state == self.state) else 1-self.r_prob
-            reward = 1 if np.random.uniform() < r_prob else 0
-        elif self.timestep < 75:
-            reward = self.memory_1[context]
-        else:
-            reward = self.memory_2[context]
-
-        # update stage
-        self.state = S_0
-        # book-keeping for plotting
-        self.last_is_rewarded = reward 
+        r_prob = self.r_prob if (self.highest_reward_state == self.state) else 1-self.r_prob
+        reward = 1 if np.random.uniform() < r_prob else 0
         return reward
+
+    def get_trial(self):
+        return "uncued" if self.timestep < 50 else "cued"
+
+    def get_cue(self):
+        if self.timestep < 50:
+            return self._generate_uncue()
+        elif self.timestep < 75:
+            return _int2binary(np.random.choice(list(self.memory_1.keys())))
+        else:
+            return _int2binary(np.random.choice(list(self.memory_2.keys())))
 
     def step(self, action, cue):
 
@@ -69,29 +67,30 @@ class EpTwoStepTask(TwoStepTask):
         # take action and go to next stage
         state = self._stage_1(action)
 
-        # observe context
         if self.timestep < 50:
+            reward = self._stage_2()
             context = self._generate_context()
         elif self.timestep < 75:
-            context = random.sample(self.memory_1.keys(), k=1)
+            reward = self.memory_1[_binary2int(cue)]
+            context = cue 
         else:
-            context = random.sample(self.memory_2.keys(), k=1)
+            reward = self.memory_2[_binary2int(cue)]
+            context = cue 
 
-        ctx_int = self._binary2int(context)
-
-        reward = self._stage_2(ctx_int)
-
-        if self.timestep < 25:
-            self.memory_1[ctx_int] = reward
-        elif self.timestep < 50:
-            self.memory_2[ctx_int] = reward
-        elif self.timestep < 75:
-            pass 
-        else:
-            pass 
+        # update stage
+        self.state = S_0
+        # book-keeping for plotting
+        self.last_is_rewarded = reward 
             
         done = self.timestep >= self.num_trials
 
-
-
         return state, reward, done, context, self.timestep
+
+
+"""helpers"""
+
+def _binary2int(binary):
+    return binary.dot(1 << np.arange(binary.shape[-1] - 1, -1, -1))
+
+def _int2binary(decimal):
+    return np.array([int(x) for x in format(decimal, '#012b')[2:]])

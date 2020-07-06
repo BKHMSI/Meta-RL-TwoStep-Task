@@ -207,10 +207,11 @@ if __name__ == "__main__":
         config = yaml.load(fin, Loader=yaml.FullLoader)
 
     n_seeds = 8
+    base_seed = 1111
     base_run_title = config["run-title"]
     for seed_idx in range(1, n_seeds + 1):
         config["run-title"] = base_run_title + f"_{seed_idx}"
-        config["seed"] = 1111 * seed_idx
+        config["seed"] = base_seed * seed_idx
         
         exp_path = os.path.join(config["save-path"], config["run-title"])
         if not os.path.isdir(exp_path): 

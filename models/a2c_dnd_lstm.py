@@ -59,11 +59,9 @@ class A2C_DND_LSTM(nn.Module):
         T.nn.init.orthogonal_(self.critic.weight, gain=1.0)
         self.critic.bias.data.fill_(0)
 
-    def forward(self, x_t, state):
-        m_t = self.dnd.get_memory(x_t)
+    def forward(self, x_t, cue, state):
+        m_t = self.dnd.get_memory(cue)
         h_t, (_, c_t) = self.ep_lstm((x_t, m_t), state)
-
-        self.dnd.save_memory(x_t, c_t)
 
         action_dist = F.softmax(self.actor(h_t), dim=-1)
         value_estimate = self.critic(h_t)
@@ -106,6 +104,9 @@ class A2C_DND_LSTM(nn.Module):
 
     def reset_memory(self):
         self.dnd.reset_memory()
+
+    def save_memory(self, mem_key, mem_val):
+        self.dnd.save_memory(mem_key, mem_val)
 
     def get_all_mems(self):
         n_mems = len(self.dnd.keys)
