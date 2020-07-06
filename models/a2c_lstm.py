@@ -5,7 +5,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
-
 def ortho_init(weights, scale=1.):
     """ PyTorch port of ortho_init from baselines.a2c.utils """
     shape = tuple(weights.size())
@@ -18,12 +17,6 @@ def ortho_init(weights, scale=1.):
     t = t.transpose(1,0).reshape(shape).float()
 
     return scale * t
-
-
-def normalized_columns_initializer(weights, std=1.0):
-    out = T.randn(weights.size())
-    out *= std / T.sqrt(out.pow(2).sum(1, keepdim=True))
-    return out
 
 class A2C_LSTM(nn.Module):
 
@@ -57,5 +50,5 @@ class A2C_LSTM(nn.Module):
 
         return action_dist, value_estimate, mem_state
 
-    def init_state(self, device, scale=.1):
+    def get_init_states(self):
         return (self.h0, self.c0)

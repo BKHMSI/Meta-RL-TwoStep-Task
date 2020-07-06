@@ -29,9 +29,9 @@ class Trainer:
         T.random.manual_seed(config["seed"])
 
         self.env = TwoStepTask(config["task"])  
-        self.model = A2C_LSTM(config["a2c"], self.env.feat_size, self.env.num_actions).to(self.device)
+        self.agent = A2C_LSTM(config["a2c"], self.env.feat_size, self.env.num_actions).to(self.device)
 
-        self.optim = T.optim.RMSprop(self.model.parameters(), lr=config["a2c"]["lr"])
+        self.optim = T.optim.RMSprop(self.agent.parameters(), lr=config["a2c"]["lr"])
 
         self.val_coeff = config["a2c"]["value-loss-weight"]
         self.entropy_coeff = config["a2c"]["entropy-weight"]
@@ -45,7 +45,7 @@ class Trainer:
         if config["resume"]:
             print("> Loading Checkpoint")
             self.start_episode = config["start-episode"]
-            self.model.load_state_dict(T.load(self.save_path.format(epi=self.start_episode) + ".pt")["state_dict"])
+            self.agent.load_state_dict(T.load(self.save_path.format(epi=self.start_episode) + ".pt")["state_dict"])
 
     def run_episode(self, episode):
         done = False
@@ -53,7 +53,7 @@ class Trainer:
         p_action, p_reward, timestep = [0,0], 0, 0
 
         state = self.env.reset()
-        mem_state = self.model.init_state(self.device)
+        mem_state = self.agent.get_init_states()
 
         buffer = []
         while not done:
@@ -62,7 +62,7 @@ class Trainer:
             self.env.possible_switch(switch_p=self.switch_p)
 
             # sample action using model
-            action_dist, val_estimate, mem_state = self.model((
+            action_dist, val_estimate, mem_state = self.agent((
                 T.tensor([state], device=self.device).float(), 
                 T.tensor([p_action], device=self.device).float(),  
                 T.tensor([[p_reward]], device=self.device).float(),  
@@ -95,7 +95,7 @@ class Trainer:
             total_reward += reward
 
         # boostrap final observation 
-        _, val_estimate, _ = self.model((
+        _, val_estimate, _ = self.agent((
             T.tensor([state], device=self.device).float(), 
             T.tensor([p_action], device=self.device).float(),  
             T.tensor([[p_reward]], device=self.device).float(),  
@@ -161,7 +161,7 @@ class Trainer:
             loss = self.a2c_loss(buffer, gamma) 
             loss.backward()
             if self.max_grad_norm > 0:
-                grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+                grad_norm = nn.utils.clip_grad_norm_(self.agent.parameters(), self.max_grad_norm)
             self.optim.step()
 
             total_rewards[episode] = reward
@@ -178,7 +178,7 @@ class Trainer:
 
             if (episode+1) % save_interval == 0:
                 T.save({
-                    "state_dict": self.model.state_dict(),
+                    "state_dict": self.agent.state_dict(),
                     "avg_reward_100": avg_reward_100,
                     'last_episode': episode,
                 }, self.save_path.format(epi=episode+1) + ".pt")
@@ -187,7 +187,7 @@ class Trainer:
     def test(self, num_episodes):
         progress = tqdm(range(num_episodes))
         self.env.reset_transition_count()
-        self.model.eval()
+        self.agent.eval()
         total_rewards = np.zeros(num_episodes)
         for episode in progress:
             reward, _ = self.run_episode(episode)

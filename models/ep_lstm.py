@@ -129,4 +129,8 @@ class EpLSTM(nn.Module):
     def forward(self, inputs, state_t0=None):
         for rnn in self.rnn:
             inputs, state = rnn(inputs, state_t0) 
-        return inputs, state  
+        return inputs, state 
+
+    def reset_parameters(self):
+        for rnn in self.rnn:
+            rnn.cell_.reset_parameters_()

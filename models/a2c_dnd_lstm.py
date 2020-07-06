@@ -1,88 +1,75 @@
 """
-A DND-based LSTM based on ...
-Ritter, et al. (2018).
-Been There, Done That: Meta-Learning with Episodic Recall.
-Proceedings of the International Conference on Machine Learning (ICML).
+    A DND-based LSTM based on ...
+    Ritter, et al. (2018).
+    Been There, Done That: Meta-Learning with Episodic Recall.
+    Proceedings of the International Conference on Machine Learning (ICML).
 """
 import torch as T
 import torch.nn as nn
+import torch.nn.functional as F
+
 from models.DND import DND
-from models.A2C import A2C_linear
-
-
-# constants
-N_GATES = 4
-
+from models.ep_lstm import EpLSTM
 
 class A2C_DND_LSTM(nn.Module):
 
-    def __init__(
-            self, input_dim, hidden_dim, output_dim,
+    def __init__(self, 
+            input_dim, 
+            hidden_dim, 
+            num_actions,
             dict_len,
-            kernel='l2', bias=True
+            kernel='l2', 
+            bias=True
     ):
         super(A2C_DND_LSTM, self).__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.bias = bias
-        # input-hidden weights
-        self.i2h = nn.Linear(input_dim, (N_GATES+1) * hidden_dim, bias=bias)
-        # hidden-hidden weights
-        self.h2h = nn.Linear(hidden_dim, (N_GATES+1) * hidden_dim, bias=bias)
-        # dnd
+
+        # long-term memory 
         self.dnd = DND(dict_len, hidden_dim, kernel)
-        #
-        self.a2c = A2C_linear(hidden_dim, output_dim)
-        # init
-        self.reset_parameter()
 
-    def reset_parameter(self):
-        for name, wts in self.named_parameters():
-            if 'weight' in name:
-                T.nn.init.orthogonal_(wts)
-            elif 'bias' in name:
-                T.nn.init.constant_(wts, 0)
+        # short-term memory
+        self.ep_lstm = EpLSTM(
+            input_size=input_dim,
+            hidden_size=hidden_dim,
+            num_layers=1,
+            batch_first=True
+        )
 
-    def forward(self, x_t, h, c):
-        # unpack activity
-        h = h.view(h.size(1), -1)
-        c = c.view(c.size(1), -1)
-        x_t = x_t.view(x_t.size(1), -1)
-        # transform the input info
-        Wx = self.i2h(x_t)
-        Wh = self.h2h(h)
-        preact = Wx + Wh
-        # get all gate values
-        gates = preact[:, : N_GATES * self.hidden_dim].sigmoid()
-        # split input(write) gate, forget gate, output(read) gate
-        f_t = gates[:, :self.hidden_dim]
-        i_t = gates[:, self.hidden_dim:2 * self.hidden_dim]
-        o_t = gates[:, 2*self.hidden_dim:3 * self.hidden_dim]
-        r_t = gates[:, -self.hidden_dim:]
-        # stuff to be written to cell state
-        c_t_new = preact[:, N_GATES * self.hidden_dim:].tanh()
-        # new cell state = gated(prev_c) + gated(new_stuff)
-        c_t = T.mul(f_t, c) + T.mul(i_t, c_t_new)
-        # retrieve memory
-        m_t = self.dnd.get_memory(x_t).tanh()
-        # gate the memory; in general, can be any transformation of it
-        c_t = c_t + T.mul(r_t, m_t)
-        # get gated hidden state from the cell state
-        h_t = T.mul(o_t, c_t.tanh())
-        # take a episodic snapshot
+        # intial states of LSTM
+        self.h0 = nn.Parameter(T.randn(1, 1, self.ep_lstm.hidden_size).float())
+        self.c0 = nn.Parameter(T.randn(1, 1, self.ep_lstm.hidden_size).float())
+
+        # actor-critic networks
+        self.actor = nn.Linear(hidden_dim, num_actions)
+        self.critic = nn.Linear(hidden_dim, 1)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        # reset lstm parameters
+        self.ep_lstm.reset_parameters()
+        # reset initial states
+        T.nn.init.normal_(self.h0)
+        T.nn.init.normal_(self.c0)
+        # intialize actor and critic weights
+        T.nn.init.orthogonal_(self.actor.weight, gain=0.01)
+        self.actor.bias.data.fill_(0)
+        T.nn.init.orthogonal_(self.critic.weight, gain=1.0)
+        self.critic.bias.data.fill_(0)
+
+    def forward(self, x_t, state):
+        m_t = self.dnd.get_memory(x_t)
+        h_t, (_, c_t) = self.ep_lstm((x_t, m_t), state)
+
         self.dnd.save_memory(x_t, c_t)
-        # policy
-        pi_a_t, v_t = self.a2c.forward(h_t)
-        # pick an action
-        a_t, prob_a_t = self.pick_action(pi_a_t)
-        # reshape data
-        h_t = h_t.view(1, h_t.size(0), -1)
-        c_t = c_t.view(1, c_t.size(0), -1)
-        # fetch activity
-        output = [a_t, prob_a_t, v_t, h_t, c_t]
-        cache = [f_t, i_t, o_t, r_t, m_t]
-        return output, cache
 
+        action_dist = F.softmax(self.actor(h_t), dim=-1)
+        value_estimate = self.critic(h_t)
+
+        return action_dist, value_estimate, (h_t, c_t)
+        
     def pick_action(self, action_distribution):
         """action selection by sampling from a multinomial.
 
@@ -102,10 +89,8 @@ class A2C_DND_LSTM(nn.Module):
         log_prob_a_t = m.log_prob(a_t)
         return a_t, log_prob_a_t
 
-    def get_init_states(self, scale=.1):
-        h_0 = T.randn(1, 1, self.hidden_dim) * scale
-        c_0 = T.randn(1, 1, self.hidden_dim) * scale
-        return h_0, c_0
+    def get_init_states(self):
+        return (self.h0, self.c0)
 
     def turn_off_encoding(self):
         self.dnd.encoding_off = True
