@@ -2,10 +2,11 @@ run-title: TwoStepEp_12
 seed: 1111
 save-path: ckpt
 save-interval: 10_000
-resume: false
+resume: true
 start-episode: 10_000
-train: true
+train: false
 test: true
+mode: episodic # {incremental, episodic}
 
 task:
   common-prob: 0.9

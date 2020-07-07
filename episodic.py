@@ -23,6 +23,7 @@ class Trainer:
     def __init__(self, config):
         self.device = 'cpu'
         self.seed = config["seed"]
+        self.mode = config["mode"]
 
         T.manual_seed(config["seed"])
         np.random.seed(config["seed"])
@@ -59,6 +60,7 @@ class Trainer:
         p_action, p_reward, timestep = [0,0], 0, 0
 
         self.agent.reset_memory()
+        self.agent.turn_on_encoding()
 
         state = self.env.reset()
         (h_tm1, c_tm1) = self.agent.get_init_states()
@@ -71,11 +73,9 @@ class Trainer:
             self.env.possible_switch(switch_p=self.switch_p)
 
             trial = self.env.get_trial()
-            if trial == "cued":
-                # self.agent.turn_off_encoding()
+            if trial == "cued" and self.mode == "episodic":
                 self.agent.turn_on_retrieval()
             else:
-                self.agent.turn_on_encoding()
                 self.agent.turn_off_retrieval() 
 
             cue = self.env.get_cue()
@@ -88,8 +88,6 @@ class Trainer:
                 T.tensor([[p_reward]], device=self.device).float(),  
                 T.tensor([[timestep]], device=self.device).float(),
             )
-
-            # if trial == "cued": breakpoint()
 
             action_dist, values, (h_t, c_t) = self.agent(x_t, cue, (h_tm1, c_tm1))
             
@@ -224,7 +222,13 @@ class Trainer:
             avg_reward = total_rewards[max(0, episode-10):(episode+1)].mean()            
             progress.set_description(f"Episode {episode}/{num_episodes} | Reward: {reward} | Last 10: {avg_reward:.4f}")
 
-        self.env.plot(self.save_path.format(epi=self.seed))
+        if self.mode == "incremental":
+            self.env.plot(self.save_path.format(epi=self.seed) + "_uncued", self.env.transition_count_uncued, "Incremental Uncued", y_lim=0)
+            self.env.plot(self.save_path.format(epi=self.seed) + "_cued", self.env.transition_count_cued, "Incremental Cued", y_lim=0)
+        elif self.mode == "episodic":
+            self.env.plot(self.save_path.format(epi=self.seed) + "_episodic", self.env.transition_count_episodic, "Episodic", y_lim=0)
+
+        return self.env.total_reward_cued, self.env.total_reward_uncued
 
 if __name__ == "__main__":
 
@@ -235,9 +239,13 @@ if __name__ == "__main__":
     with open(args.config, 'r', encoding="utf-8") as fin:
         config = yaml.load(fin, Loader=yaml.FullLoader)
 
-    n_seeds = 1
+    n_seeds = 10
     base_seed = config["seed"]
     base_run_title = config["run-title"]
+
+    reward_cued = np.zeros(n_seeds)
+    reward_uncued = np.zeros(n_seeds)
+
     for seed_idx in range(1, n_seeds + 1):
         config["run-title"] = base_run_title + f"_{seed_idx}"
         config["seed"] = base_seed * seed_idx
@@ -255,6 +263,13 @@ if __name__ == "__main__":
         if config["train"]:
             trainer.train(config["task"]["train-episodes"], config["agent"]["gamma"], config["save-interval"])
         if config["test"]:
-            trainer.test(config["task"]["test-episodes"])
+            reward_cued[seed_idx-1], reward_uncued[seed_idx-1] = trainer.test(config["task"]["test-episodes"])
+
+
+    save_path = os.path.join(exp_path, "reward_cued.npy")
+    np.save(save_path, reward_cued)
+
+    save_path = os.path.join(exp_path, "reward_uncued.npy")
+    np.save(save_path, reward_uncued)
 
     

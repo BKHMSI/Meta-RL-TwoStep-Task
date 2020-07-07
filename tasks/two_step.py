@@ -58,19 +58,22 @@ class TwoStepTask:
             int(not (self.last_action == action))
         ] += 1
  
-    def compute_stay_prob(self):
+    def compute_stay_prob(self, transition_count):
         # stay_prob[r,c,a] = P[r,c,a] / (P[r,c,a] + P[r,c,~a]) 
-        action_count = self.transition_count.sum(axis=-1)
-        return self.transition_count / action_count[:, :, np.newaxis]
+        action_count = transition_count.sum(axis=-1)
+        return transition_count / action_count[:, :, np.newaxis]
 
-    def plot(self, save_path, title="Two-Step Task"):
+    def plot(self, save_path, transition_count=None, title="Two-Step Task", y_lim=0.5):
         _, ax = plt.subplots()
 
-        ax.set_ylim([0.5, 1.0])
+        ax.set_ylim([y_lim, 1.0])
         ax.set_ylabel('Stay Probability')
         ax.set_title(title)
+
+        if transition_count is None:
+            transition_count = self.transition_count
         
-        stay_probs = self.compute_stay_prob()
+        stay_probs = self.compute_stay_prob(transition_count)
         
         common = [stay_probs[0,0,0], stay_probs[1,0,0]]
         uncommon = [stay_probs[0,1,0], stay_probs[1,1,0]]

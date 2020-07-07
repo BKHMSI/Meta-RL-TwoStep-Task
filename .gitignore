@@ -1,5 +1,6 @@
 logs*
 ckpt
+archive
 
 *.pyc
 notes.txt
