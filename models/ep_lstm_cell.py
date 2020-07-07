@@ -30,7 +30,7 @@ ACTIVATIONS = {
     'relu': nn.ReLU(),
 }
 
-class EpLSTMCell:
+class EpLSTMCell(nn.Module):
     def __repr__(self):
         return (
             f'{self.__class__.__name__}('
@@ -76,8 +76,8 @@ class EpLSTMCell:
     # @T.jit.ignore
     def get_recurrent_weights(self):
         # type: () -> Tuple[GateSpans, GateSpans]
-        W = self.recurrent_kernel.weight.chunk(N_GATES, 0)
-        b = self.recurrent_kernel.bias.chunk(N_GATES, 0)
+        W = self.recurrent_kernel.weight.chunk(5, 0)
+        b = self.recurrent_kernel.bias.chunk(5, 0)
         W = GateSpans(W[0], W[1], W[2], W[3], W[4])
         b = GateSpans(b[0], b[1], b[2], b[3], b[4])
         return W, b
@@ -85,8 +85,8 @@ class EpLSTMCell:
     # @T.jit.ignore
     def get_input_weights(self):
         # type: () -> Tuple[GateSpans, GateSpans]
-        W = self.input_kernel.weight.chunk(N_GATES, 0)
-        b = self.input_kernel.bias.chunk(N_GATES, 0)
+        W = self.input_kernel.weight.chunk(5, 0)
+        b = self.input_kernel.bias.chunk(5, 0)
         W = GateSpans(W[0], W[1], W[2], W[3], W[4])
         b = GateSpans(b[0], b[1], b[2], b[3], b[4])
         return W, b
@@ -106,7 +106,7 @@ class EpLSTMCell:
         for W in iw:
             nn.init.xavier_uniform_(W)
 
-    # @T.jit.export
+    @T.jit.export
     def get_init_state(self, input: Tensor) -> Tuple[Tensor, Tensor]:
         batch_size = input.shape[1]
         zeros = T.zeros(batch_size, self.Dh, device=input.device)
@@ -114,7 +114,7 @@ class EpLSTMCell:
 
     def apply_input_kernel(self, xt: Tensor) -> List[Tensor]:
         xto = self.vertical_dropout(xt)
-        out = self.input_kernel(xto).chunk(N_GATES, 1)
+        out = self.input_kernel(xto).chunk(5, 1)
         return out
 
     def apply_recurrent_kernel(self, h_tm1: Tensor):
@@ -123,20 +123,20 @@ class EpLSTMCell:
         if mode == 'gal_tied':
             hto = self.recurrent_dropout(h_tm1)
             out = self.recurrent_kernel(hto)
-            #^ out : [b N_GATES*h]
-            outs = out.chunk(N_GATES, -1)
+            #^ out : [b 5*h]
+            outs = out.chunk(5, -1)
         elif mode == 'gal_gates':
             outs = []
             WW, bb = self.get_recurrent_weights()
-            for i in range(N_GATES):
+            for i in range(5):
                 hto = self.recurrent_dropout(h_tm1)
                 outs.append(F.linear(hto, WW[i], bb[i]))
         else:
-            outs = self.recurrent_kernel(h_tm1).chunk(N_GATES, -1)
+            outs = self.recurrent_kernel(h_tm1).chunk(5, -1)
         return outs
 
     def forward(self, xt, mt, state):
-        # type: (Tuple[Tensor, Tensor], Tuple[Tensor, Tensor]) -> Tuple[Tensor, Tuple[Tensor, Tensor]]
+        # type: (Tensor, Tensor, Tuple[Tensor, Tensor]) -> Tuple[Tensor, Tuple[Tensor, Tensor]]
         #^ inputs.xt : [b i]
         #^ state.h : [b h]
 
@@ -165,9 +165,9 @@ class EpLSTMCell:
 
         return ht, (ht, ct)
 
-    # @T.jit.export
+    @T.jit.export
     def loop(self, inputs, memories, state_t0, mask=None):
-        # type: (List[Tensor], List[Tensor], Tuple[Tensor, Tensor], Optional[List[Tensor]]) -> Tuple[List[Tensor], Tuple[Tensor, Tensor]]
+        # type: (Tensor, Tensor, Tuple[Tensor, Tensor], Optional[List[Tensor]]) -> Tuple[List[Tensor], Tuple[Tensor, Tensor]]
         '''
         This loops over t (time) steps
         '''
@@ -179,7 +179,7 @@ class EpLSTMCell:
         outs = []
 
         for xt, mt in zip(inputs, memories):
-            ht, state = self.forward(xt, mt, state)
+            ht, state = self(xt, mt, state)
             outs.append(ht)
 
         return outs, state

@@ -37,7 +37,7 @@ class Trainer:
             config["agent"]["dict-kernel"]
         ).to(self.device)
 
-        self.optim = T.optim.Adam(self.agent.parameters(), lr=config["agent"]["lr"])
+        self.optim = T.optim.RMSprop(self.agent.parameters(), lr=config["agent"]["lr"])
 
         self.val_coeff = config["agent"]["value-loss-weight"]
         self.entropy_coeff = config["agent"]["entropy-weight"]
@@ -61,7 +61,7 @@ class Trainer:
         self.agent.reset_memory()
 
         state = self.env.reset()
-        (h_t, c_t) = self.agent.get_init_states()
+        (h_tm1, c_tm1) = self.agent.get_init_states()
 
         buffer = []
 
@@ -72,7 +72,7 @@ class Trainer:
 
             trial = self.env.get_trial()
             if trial == "cued":
-                self.agent.turn_off_encoding()
+                # self.agent.turn_off_encoding()
                 self.agent.turn_on_retrieval()
             else:
                 self.agent.turn_on_encoding()
@@ -89,7 +89,9 @@ class Trainer:
                 T.tensor([[timestep]], device=self.device).float(),
             )
 
-            action_dist, values, (h_t, c_t) = self.agent(x_t, cue, (h_t, c_t))
+            # if trial == "cued": breakpoint()
+
+            action_dist, values, (h_t, c_t) = self.agent(x_t, cue, (h_tm1, c_tm1))
             
             action_cat = T.distributions.Categorical(action_dist.squeeze())
             action = action_cat.sample()
@@ -115,6 +117,8 @@ class Trainer:
             state = new_state
             p_reward = reward
             p_action = action_onehot
+            c_tm1 = c_t
+            h_tm1 = h_t 
 
             total_reward += reward
 
@@ -232,7 +236,7 @@ if __name__ == "__main__":
         config = yaml.load(fin, Loader=yaml.FullLoader)
 
     n_seeds = 1
-    base_seed = 1111
+    base_seed = config["seed"]
     base_run_title = config["run-title"]
     for seed_idx in range(1, n_seeds + 1):
         config["run-title"] = base_run_title + f"_{seed_idx}"

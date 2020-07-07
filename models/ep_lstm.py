@@ -98,8 +98,7 @@ class EpLSTM(nn.Module):
     
         Dh = self._cell_builder.hidden_size
         def make(isize: int):
-            # cell = self._cell_builder.make_scripted(isize)
-            cell = self._cell_builder.make(isize)
+            cell = self._cell_builder.make_scripted(isize)
             return EpLSTM_Layer(cell, isize, batch_first=batch_first)
 
         rnns = [

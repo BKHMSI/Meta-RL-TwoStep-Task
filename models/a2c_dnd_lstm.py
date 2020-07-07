@@ -68,6 +68,7 @@ class A2C_DND_LSTM(nn.Module):
             mem_state = (self.h0, self.c0)
 
         m_t = self.dnd.get_memory(cue)
+    
         _, (h_t, c_t) = self.ep_lstm((x_t.unsqueeze(1), m_t.unsqueeze(1)), mem_state)
 
         action_dist = F.softmax(self.actor(h_t), dim=-1)

@@ -1,4 +1,4 @@
-run-title: TwoStep_60
+run-title: TwoStep_71
 seed: 1995
 save-path: ckpt
 save-interval: 10_000
@@ -8,16 +8,16 @@ train: true
 test: true
 
 task:
-  common-prob: 0.8
+  common-prob: 0.9
   reward-prob: 0.9
-  swtich-prob: 0.025
+  swtich-prob: 0.1
 
   train-episodes: 10_000
   trials-per-epi: 100
-  test-episodes: 300
+  test-episodes: 500
 
 a2c:
-  mem-units: 48
+  mem-units: 128
   
   value-loss-weight: 0.05
   entropy-weight: 0.05

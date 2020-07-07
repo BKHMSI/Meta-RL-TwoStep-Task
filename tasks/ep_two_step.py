@@ -68,15 +68,23 @@ class EpTwoStepTask(TwoStepTask):
             context = self._generate_context()
             ctx_int = _binary2int(context)
             if self.timestep < 25:
-                self.memory_1[ctx_int] = reward
+                self.memory_1[ctx_int] = (reward, self.state)
             else:
-                self.memory_2[ctx_int] = reward
+                self.memory_2[ctx_int] = (reward, self.state)
         elif self.timestep < 75:
-            reward = self.memory_1[_binary2int(cue)]
-            context = cue 
+            reward, old_state = self.memory_1[_binary2int(cue)]
+            if old_state == self.state:
+                context = cue
+            else:
+                reward = self._stage_2()
+                context = self._generate_context()
         else:
-            reward = self.memory_2[_binary2int(cue)]
-            context = cue 
+            reward, old_state = self.memory_2[_binary2int(cue)]
+            if old_state == self.state:
+                context = cue
+            else:
+                reward = self._stage_2()
+                context = self._generate_context()
 
         # update stage
         self.state = S_0
@@ -86,7 +94,6 @@ class EpTwoStepTask(TwoStepTask):
         self.timestep += 1
         done = self.timestep >= self.num_trials
         
-
         return state, reward, done, self.timestep, context
 
 

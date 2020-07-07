@@ -112,7 +112,7 @@ class DND:
         similarities = compute_similarities(query_key, self.keys, self.kernel)
         # get the best-match memory
         best_memory_val = self._get_memory(similarities)
-        return best_memory_val
+        return best_memory_val.unsqueeze(0)
 
     def _get_memory(self, similarities, policy='1NN'):
         """get the episodic memory according to some policy
