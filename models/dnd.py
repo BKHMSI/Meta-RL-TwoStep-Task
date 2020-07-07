@@ -167,11 +167,11 @@ def compute_similarities(query_key, key_list, metric):
     # reshape memory keys to #keys x key_dim
     M = T.stack(key_list)
     # compute similarities
-    if metric is 'cosine':
-        similarities = F.cosine_similarity(q, M)
-    elif metric is 'l1':
+    if metric == 'cosine':
+        similarities = F.cosine_similarity(q.float(), M.float())
+    elif metric == 'l1':
         similarities = - F.pairwise_distance(q, M, p=1)
-    elif metric is 'l2':
+    elif metric == 'l2':
         similarities = - F.pairwise_distance(q, M, p=2)
     else:
         raise ValueError(f'unrecog metric: {metric}')

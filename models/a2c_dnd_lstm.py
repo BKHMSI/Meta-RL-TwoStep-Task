@@ -8,7 +8,7 @@ import torch as T
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.DND import DND
+from models.dnd import DND
 from models.ep_lstm import EpLSTM
 
 class A2C_DND_LSTM(nn.Module):
@@ -34,12 +34,12 @@ class A2C_DND_LSTM(nn.Module):
             input_size=input_dim,
             hidden_size=hidden_dim,
             num_layers=1,
-            batch_first=True
+            batch_first=False
         )
 
         # intial states of LSTM
-        self.h0 = nn.Parameter(T.randn(1, 1, self.ep_lstm.hidden_size).float())
-        self.c0 = nn.Parameter(T.randn(1, 1, self.ep_lstm.hidden_size).float())
+        self.h0 = nn.Parameter(T.randn(1, self.ep_lstm.hidden_size).float())
+        self.c0 = nn.Parameter(T.randn(1, self.ep_lstm.hidden_size).float())
 
         # actor-critic networks
         self.actor = nn.Linear(hidden_dim, num_actions)
@@ -59,9 +59,16 @@ class A2C_DND_LSTM(nn.Module):
         T.nn.init.orthogonal_(self.critic.weight, gain=1.0)
         self.critic.bias.data.fill_(0)
 
-    def forward(self, x_t, cue, state):
+    def forward(self, data, cue, mem_state):
+
+        state, p_action, p_reward, timestep = data 
+        x_t = T.cat((state, p_action, p_reward, timestep), dim=-1)
+
+        if mem_state is None:
+            mem_state = (self.h0, self.c0)
+
         m_t = self.dnd.get_memory(cue)
-        h_t, (_, c_t) = self.ep_lstm((x_t, m_t), state)
+        _, (h_t, c_t) = self.ep_lstm((x_t.unsqueeze(1), m_t.unsqueeze(1)), mem_state)
 
         action_dist = F.softmax(self.actor(h_t), dim=-1)
         value_estimate = self.critic(h_t)

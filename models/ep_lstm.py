@@ -18,7 +18,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from torch import Tensor
-from ep_lstm_cell import EpLSTMCell
+from models.ep_lstm_cell import EpLSTMCell
 
 @dataclass
 class EpLSTMCell_Builder:
@@ -63,11 +63,11 @@ class EpLSTM_Layer(nn.Module):
         #^ x_t : [b t i]
             x_t = x_t.transpose(1, 0)
         #^ x_t : [t b i]
-        x_t = x_t.unbind(0)
+        # x_t = x_t.unbind(0)
 
         if state_t0 is None:
             state_t0 = self.cell_.get_init_state(x_t)
-    
+        
         x_t = self.reorder_inputs(x_t)
 
         sequence, state = self.cell_.loop(x_t, m_t, state_t0)
@@ -98,7 +98,8 @@ class EpLSTM(nn.Module):
     
         Dh = self._cell_builder.hidden_size
         def make(isize: int):
-            cell = self._cell_builder.make_scripted(isize)
+            # cell = self._cell_builder.make_scripted(isize)
+            cell = self._cell_builder.make(isize)
             return EpLSTM_Layer(cell, isize, batch_first=batch_first)
 
         rnns = [

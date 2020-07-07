@@ -34,7 +34,7 @@ class Trainer:
             config["agent"]["mem-units"], 
             self.env.num_actions,
             config["agent"]["dict-len"],
-            config["agent"]["kernel"]
+            config["agent"]["dict-kernel"]
         ).to(self.device)
 
         self.optim = T.optim.Adam(self.agent.parameters(), lr=config["agent"]["lr"])
@@ -45,7 +45,7 @@ class Trainer:
         self.switch_p = config["task"]["swtich-prob"]
         self.start_episode = 0
 
-        self.writer = SummaryWriter(log_dir=os.path.join("logs", config["run-title"]))
+        self.writer = SummaryWriter(log_dir=os.path.join("logs_ep", config["run-title"]))
         self.save_path = os.path.join(config["save-path"], config["run-title"], config["run-title"]+"_{epi:04d}")
 
         if config["resume"]:
@@ -70,7 +70,7 @@ class Trainer:
             # switch reward contingencies at the beginning of each episode with probability p
             self.env.possible_switch(switch_p=self.switch_p)
 
-            trial = self.env.get_stage()
+            trial = self.env.get_trial()
             if trial == "cued":
                 self.agent.turn_off_encoding()
                 self.agent.turn_on_retrieval()
@@ -90,7 +90,7 @@ class Trainer:
             )
 
             action_dist, values, (h_t, c_t) = self.agent(x_t, cue, (h_t, c_t))
-
+            
             action_cat = T.distributions.Categorical(action_dist.squeeze())
             action = action_cat.sample()
             action_onehot = np.eye(2)[action]
@@ -119,13 +119,14 @@ class Trainer:
             total_reward += reward
 
         # boostrap final observation 
+        cue = self.env.get_cue()
+        cue = T.tensor(cue, device=self.device)
         _, values, _ = self.agent((
             T.tensor([state], device=self.device).float(), 
             T.tensor([p_action], device=self.device).float(),  
             T.tensor([[p_reward]], device=self.device).float(),  
-            T.tensor([[timestep]], device=self.device).float(), 
-            (h_t, c_t)
-        ))
+            T.tensor([[timestep]], device=self.device).float(),
+        ), cue, (h_t, c_t))
 
         buffer += [Rollout(None, None, None, None, None, None, values)]
 
@@ -158,10 +159,10 @@ class Trainer:
 
         batch = Rollout(*zip(*buffer))
 
-        policy = T.cat(batch.policy[:-1], dim=1).squeeze().to(self.device)
+        policy = T.cat(batch.policy[:-1], dim=0).squeeze().to(self.device)
         action = T.tensor(batch.action[:-1], device=self.device)
         values = T.tensor(batch.value[:-1], device=self.device)
-
+        
         logits = (policy * action).sum(1)
         policy_loss = -(T.log(logits) * all_advantages).mean()
         value_loss = 0.5 * (all_returns - values).pow(2).mean()
@@ -230,7 +231,7 @@ if __name__ == "__main__":
     with open(args.config, 'r', encoding="utf-8") as fin:
         config = yaml.load(fin, Loader=yaml.FullLoader)
 
-    n_seeds = 10
+    n_seeds = 1
     base_seed = 1111
     base_run_title = config["run-title"]
     for seed_idx in range(1, n_seeds + 1):

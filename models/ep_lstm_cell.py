@@ -17,7 +17,7 @@ from torch import nn
 from torch import Tensor
 from torch.nn import functional as F
 
-from ep_lstm import EpLSTMCell_Builder
+# from models.ep_lstm import EpLSTMCell_Builder
 
 # constants 
 N_GATES = 5
@@ -48,7 +48,7 @@ class EpLSTMCell:
     def __init__(
             self,
             input_size: int,
-            args: EpLSTMCell_Builder,
+            args,
     ):
         super().__init__()
         self._args = args
@@ -106,7 +106,7 @@ class EpLSTMCell:
         for W in iw:
             nn.init.xavier_uniform_(W)
 
-    @T.jit.export
+    # @T.jit.export
     def get_init_state(self, input: Tensor) -> Tuple[Tensor, Tensor]:
         batch_size = input.shape[1]
         zeros = T.zeros(batch_size, self.Dh, device=input.device)
@@ -165,7 +165,7 @@ class EpLSTMCell:
 
         return ht, (ht, ct)
 
-    @T.jit.export
+    # @T.jit.export
     def loop(self, inputs, memories, state_t0, mask=None):
         # type: (List[Tensor], List[Tensor], Tuple[Tensor, Tensor], Optional[List[Tensor]]) -> Tuple[List[Tensor], Tuple[Tensor, Tensor]]
         '''
@@ -177,6 +177,7 @@ class EpLSTMCell:
         #^ out         : [t b h]
         state = state_t0
         outs = []
+
         for xt, mt in zip(inputs, memories):
             ht, state = self.forward(xt, mt, state)
             outs.append(ht)

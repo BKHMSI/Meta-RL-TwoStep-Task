@@ -12,12 +12,16 @@ task:
   reward-prob: 0.9
   swtich-prob: 0.1
 
+  context-len: 10
+
   train-episodes: 10_000
   trials-per-epi: 100
   test-episodes: 500
 
-a2c:
+agent:
   mem-units: 48
+  dict-len: 100_000
+  dict-kernel: cosine
   
   value-loss-weight: 0.05
   entropy-weight: 0.05

@@ -2,7 +2,7 @@
 
 import random 
 import numpy as np
-from two_step import TwoStepTask
+from tasks.two_step import TwoStepTask
 
 # constants
 S_0 = 0
@@ -13,11 +13,10 @@ N_STATES = 3
 
 class EpTwoStepTask(TwoStepTask):
     def __init__(self, config):
-        super().__init__(config)
-
-        self.ctx_len = config["context-length"]
+        self.ctx_len = config["context-len"]
         self.memory_1 = {} # maps context to reward for trials 1-25
         self.memory_2 = {} # maps context to reward for trials 26-50
+        super().__init__(config)
 
     def reset(self):
         self.timestep = 0
@@ -33,9 +32,8 @@ class EpTwoStepTask(TwoStepTask):
         
         self.state = S_0
         
-        uncue = self._generate_uncue()
         state = self.encode_state()
-        return state, uncue 
+        return state 
 
     def _generate_context(self):
         return np.random.randint(2, size=self.ctx_len)
@@ -56,20 +54,23 @@ class EpTwoStepTask(TwoStepTask):
         if self.timestep < 50:
             return self._generate_uncue()
         elif self.timestep < 75:
-            return _int2binary(np.random.choice(list(self.memory_1.keys())))
+            rand_cue = np.random.choice(list(self.memory_1.keys()))
         else:
-            return _int2binary(np.random.choice(list(self.memory_2.keys())))
+            rand_cue = np.random.choice(list(self.memory_2.keys()))
+        return _int2binary(rand_cue, self.ctx_len)
 
     def step(self, action, cue):
-
-        self.timestep += 1
-
         # take action and go to next stage
         state = self._stage_1(action)
 
         if self.timestep < 50:
             reward = self._stage_2()
             context = self._generate_context()
+            ctx_int = _binary2int(context)
+            if self.timestep < 25:
+                self.memory_1[ctx_int] = reward
+            else:
+                self.memory_2[ctx_int] = reward
         elif self.timestep < 75:
             reward = self.memory_1[_binary2int(cue)]
             context = cue 
@@ -82,15 +83,17 @@ class EpTwoStepTask(TwoStepTask):
         # book-keeping for plotting
         self.last_is_rewarded = reward 
             
+        self.timestep += 1
         done = self.timestep >= self.num_trials
+        
 
-        return state, reward, done, context, self.timestep
+        return state, reward, done, self.timestep, context
 
 
 """helpers"""
 
 def _binary2int(binary):
-    return binary.dot(1 << np.arange(binary.shape[-1] - 1, -1, -1))
+    return (binary * 2**np.arange(binary.shape[0]-1, -1, -1)).sum()
 
-def _int2binary(decimal):
-    return np.array([int(x) for x in format(decimal, '#012b')[2:]])
+def _int2binary(decimal, length=10):
+    return np.array([int(x) for x in format(decimal, f'#0{length+2}b')[2:]])
