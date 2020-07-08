@@ -79,7 +79,7 @@ def read_data(load_dir, tag="perf/avg_reward_10"):
 
     return None 
 
-def plot_rewards(save_path, load_path_epi, load_path_inc, n_seeds=10):
+def plot_rewards_curve(save_path, load_path_epi, load_path_inc, n_seeds=10):
 
     epi_data = np.zeros((n_seeds, 10_000))
     inc_data = np.zeros((n_seeds, 10_000))
@@ -115,7 +115,7 @@ if __name__ == "__main__":
     # )
 
     ## Compare Episodic vs Incremental Training Curves ##
-    plot_rewards(
+    plot_rewards_curve(
         save_path="./assets/epi_inc_rewards.png",
         load_path_epi="./logs_ep/TwoStepEp_12",
         load_path_inc="./logs_ep/TwoStepEp_13",
