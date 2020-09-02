@@ -43,9 +43,6 @@ class EpTwoStepTask(TwoStepTask):
         # clear memories
         self.memory_1 = {}
         self.memory_2 = {}
-
-        self.total_reward_cued = 0
-        self.total_reward_uncued = 0
         
         self.state = S_0
         
@@ -68,7 +65,8 @@ class EpTwoStepTask(TwoStepTask):
         reward = 1 if np.random.uniform() < r_prob else 0
         return reward
 
-    def get_trial(self):
+    @property
+    def trial(self):
         return "uncued" if self.timestep < 50 else "cued"
 
     def get_cue(self):
@@ -86,7 +84,7 @@ class EpTwoStepTask(TwoStepTask):
         return reward, context
 
     def update_stay_prob(self, action):
-        if self.get_trial() == "cued":
+        if self.trial == "cued":
             self.transition_count_cued[
                 int(not self.last_is_rewarded),
                 int(not self.last_is_common),

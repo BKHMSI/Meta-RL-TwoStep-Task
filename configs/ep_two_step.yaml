@@ -1,10 +1,10 @@
-run-title: TwoStepEp_14
+run-title: TwoStepEp_12
 seed: 1111
-save-path: ckpt
+save-path: ckpt/TwoStepEp_12
 save-interval: 15_000
-resume: false
-start-episode: 15_000
-train: true
+resume: true
+start-episode: 10_000
+train: false
 test: true
 mode: episodic # {incremental, episodic}
 

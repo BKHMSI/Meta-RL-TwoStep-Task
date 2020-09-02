@@ -1,11 +1,42 @@
 import os
 import numpy as np
+import pandas as pd 
 import matplotlib.pyplot as plt
 
 from tqdm import tqdm 
+from scipy import stats
 from tensorboard.backend.event_processing import event_accumulator
 
 '''plotting functions'''
+
+def anova_2way(base_path, mode, n_seeds=10, base_seed=1111):
+    data = []
+    for seed_idx in range(1, n_seeds + 1):
+
+        basename = os.path.basename(base_path)
+        subpath = f"{basename}_{seed_idx}_{base_seed*seed_idx}.npy"
+        if mode is not None: 
+            subpath = f"{basename}_{seed_idx}_{base_seed*seed_idx}_{mode}.npy"
+        
+        path = os.path.join(base_path, basename+f"_{seed_idx}", subpath)
+        stay_probs = np.load(path)
+        
+        for i in range(stay_probs.shape[0]):
+            for j in range(stay_probs.shape[1]):
+                data += [{
+                    'reward': 1-i,
+                    'common': 1-j,
+                    'prob': stay_probs[i,j,0]
+                }]
+
+    df = pd.DataFrame(data)
+
+    import statsmodels.api as sm
+    from statsmodels.formula.api import ols
+    #perform two-way ANOVA
+    model = ols('prob ~ C(reward) + C(common) + C(reward):C(common)', data=df).fit()
+    result = sm.stats.anova_lm(model, typ=2)
+    print(result)
 
 def plot_seeds(save_path, 
             load_path, 
@@ -18,13 +49,17 @@ def plot_seeds(save_path,
     _, ax = plt.subplots()
     common_sum = np.array([0.,0.])
     uncommon_sum = np.array([0.,0.])
+    dir_base_path = os.path.basename(load_path)
 
     for seed_idx in range(1, n_seeds + 1):
 
         ax.set_ylim([y_lim, 1.0])
         ax.set_ylabel('Stay Probability')
         
-        path = os.path.join(load_path+f"_{seed_idx}", f"{os.path.basename(load_path)}_{seed_idx}_{base_seed*seed_idx}_{mode}.npy")
+        base_path = f"{os.path.basename(load_path)}_{seed_idx}_{base_seed*seed_idx}.npy"
+        if mode is not None: 
+            base_path = f"{os.path.basename(load_path)}_{seed_idx}_{base_seed*seed_idx}_{mode}.npy"
+        path = os.path.join(load_path, dir_base_path+f"_{seed_idx}", base_path)
         stay_probs = np.load(path)
 
         common = [stay_probs[0,0,0], stay_probs[1,0,0]]
@@ -39,19 +74,51 @@ def plot_seeds(save_path,
         plt.plot([1,3], common, 'o', color='black')
         plt.plot([2,4], uncommon, 'o', color='black')
         
-    c  = plt.bar([1,3],  (1. / n_seeds) * common_sum, color='b', width=0.5)
+    c  = plt.bar([1,3], (1. / n_seeds) * common_sum, color='b', width=0.5)
     uc = plt.bar([2,4], (1. / n_seeds) * uncommon_sum, color='r', width=0.5)
     ax.legend( (c[0], uc[0]), ('Common', 'Uncommon') )
     ax.set_title(title)
     plt.savefig(save_path)
 
-def print_rewards(save_path, load_path_mrl, load_path_emrl, title):
+def compare_rewards(load_path_mrl, load_path_emrl, save_path, title):
 
-    mrl_cued   = np.load(os.path.join(load_path_mrl, "reward_cued.npy"))
-    mrl_uncued = np.load(os.path.join(load_path_mrl, "reward_uncued.npy"))
+    mrl_cued   = np.load(os.path.join(load_path_mrl, "mrl_reward_cued.npy"))
+    mrl_uncued = np.load(os.path.join(load_path_mrl, "mrl_reward_uncued.npy"))
 
-    emrl_cued   = np.load(os.path.join(load_path_emrl, "reward_cued.npy"))
-    emrl_uncued = np.load(os.path.join(load_path_emrl, "reward_uncued.npy"))
+    emrl_cued   = np.load(os.path.join(load_path_emrl, "emrl_reward_cued.npy"))
+    emrl_uncued = np.load(os.path.join(load_path_emrl, "emrl_reward_uncued.npy"))
+
+    t_state, p_val = stats.ttest_ind(mrl_cued, emrl_cued) 
+    print(f"Cued --> P-Value: {p_val} | T-Statistic: {t_state}")
+
+    t_state, p_val = stats.ttest_ind(mrl_uncued, emrl_uncued) 
+    print(f"Uncued --> P-Value: {p_val} | T-Statistic: {t_state}")
+
+    t_state, p_val = stats.ttest_ind(np.stack([mrl_cued, mrl_uncued]).mean(axis=0), np.stack([emrl_cued, emrl_uncued]).mean(axis=0)) 
+    print(f"Total --> P-Value: {p_val} | T-Statistic: {t_state}")
+
+    _, ax = plt.subplots()
+    ax.set_ylim([0.5, 0.8])
+    ax.set_xticks([1.5,3.5])
+    ax.set_xticklabels(['Uncued', 'Cued'])
+
+    mrl = plt.bar([1.2,3.2], 
+        [mrl_uncued.mean(), mrl_cued.mean()], 
+        yerr=[mrl_uncued.std(), mrl_cued.std()], 
+        color='orange', 
+        width=0.5
+    )
+    
+    emrl = plt.bar([1.8,3.8], 
+        [emrl_uncued.mean(), emrl_cued.mean()], 
+        yerr=[emrl_uncued.std(), emrl_cued.std()], 
+        color='gray', 
+        width=0.5
+    )
+    ax.legend((mrl[0], emrl[0]), ('MRL', 'EMRL'))
+    # ax.set_title(title)
+    ax.set_ylabel(title)
+    plt.show()
 
     print(f"MRL: Cued {mrl_cued.mean()} | Uncued {mrl_uncued.mean()}")
     print(f"EMRL: Cued {emrl_cued.mean()} | Uncued {emrl_uncued.mean()}")
@@ -104,21 +171,34 @@ def plot_rewards_curve(save_path, load_path_epi, load_path_inc, n_seeds=10):
 
 if __name__ == "__main__":
 
-    ## Episodic Plot ##
+    #### Two-Way ANOVA ####
+    # anova_2way("ckpt/TwoStepEp_12", mode="episodic")
+    # anova_2way("ckpt/TwoStep_60", mode=None, n_seeds=8)
+
+    #### Episodic Plot ####
     # plot_seeds(
-    #     save_path="assets/ep_twostep_stayprob.png", 
-    #     load_path="ckpt/TwoStepEp_12", 
-    #     mode="episodic", 
-    #     y_lim=0, 
-    #     n_seeds=10, 
-    #     title="Episodic"
+    #     save_path="ckpt/TwoStep_60", 
+    #     load_path="ckpt/TwoStep_60", 
+    #     mode=None, 
+    #     y_lim=0.5, 
+    #     n_seeds=8, 
+    #     title="Incremental"
     # )
 
-    ## Compare Episodic vs Incremental Training Curves ##
-    plot_rewards_curve(
-        save_path="./assets/epi_inc_rewards.png",
-        load_path_epi="./logs_ep/TwoStepEp_12",
-        load_path_inc="./logs_ep/TwoStepEp_13",
-        n_seeds=10
+    #### Compare Training Curves ####
+    # plot_rewards_curve(
+    #     save_path="./assets/epi_inc_rewards.png",
+    #     load_path_epi="./logs_ep/TwoStepEp_12",
+    #     load_path_inc="./logs_ep/TwoStepEp_13",
+    #     n_seeds=10
+    # )
+
+    #### Compare Rewards ####
+    compare_rewards(
+        load_path_mrl="./ckpt/TwoStepEp_12",
+        load_path_emrl="./ckpt/TwoStepEp_12",
+        save_path=None,
+        title="Performance" 
     )
+    
 

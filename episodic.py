@@ -72,8 +72,7 @@ class Trainer:
             # switch reward contingencies at the beginning of each episode with probability p
             self.env.possible_switch(switch_p=self.switch_p)
 
-            trial = self.env.get_trial()
-            if trial == "cued" and self.mode == "episodic":
+            if self.env.trial == "cued" and self.mode == "episodic":
                 self.agent.turn_on_retrieval()
             else:
                 self.agent.turn_off_retrieval() 
@@ -228,7 +227,7 @@ class Trainer:
         elif self.mode == "episodic":
             self.env.plot(self.save_path.format(epi=self.seed) + "_episodic", self.env.transition_count_episodic, "Episodic", y_lim=0)
 
-        return self.env.total_reward_cued, self.env.total_reward_uncued
+        return self.env.total_reward_cued / (num_episodes*50), self.env.total_reward_uncued / (num_episodes*50)
 
 if __name__ == "__main__":
 
@@ -266,10 +265,10 @@ if __name__ == "__main__":
             reward_cued[seed_idx-1], reward_uncued[seed_idx-1] = trainer.test(config["task"]["test-episodes"])
 
 
-    save_path = os.path.join(exp_path, "reward_cued.npy")
+    save_path = os.path.join(config["save-path"], "reward_cued.npy")
     np.save(save_path, reward_cued)
 
-    save_path = os.path.join(exp_path, "reward_uncued.npy")
+    save_path = os.path.join(config["save-path"], "reward_uncued.npy")
     np.save(save_path, reward_uncued)
 
     
