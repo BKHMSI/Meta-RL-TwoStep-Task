@@ -58,7 +58,7 @@ def plot_seeds(save_path,
         
         base_path = f"{os.path.basename(load_path)}_{seed_idx}_{base_seed*seed_idx}.npy"
         if mode is not None: 
-            base_path = f"{os.path.basename(load_path)}_{seed_idx}_{base_seed*seed_idx}_{mode}.npy"
+            base_path = f"{os.path.basename(load_path)}_{seed_idx}_{base_seed*seed_idx:04d}_{mode}.npy"
         path = os.path.join(load_path, dir_base_path+f"_{seed_idx}", base_path)
         stay_probs = np.load(path)
 
@@ -78,7 +78,8 @@ def plot_seeds(save_path,
     uc = plt.bar([2,4], (1. / n_seeds) * uncommon_sum, color='r', width=0.5)
     ax.legend( (c[0], uc[0]), ('Common', 'Uncommon') )
     ax.set_title(title)
-    plt.savefig(save_path)
+    plt.show()
+    # plt.savefig(save_path)
 
 def compare_rewards(load_path_mrl, load_path_emrl, save_path, title):
 
@@ -176,14 +177,15 @@ if __name__ == "__main__":
     # anova_2way("ckpt/TwoStep_60", mode=None, n_seeds=8)
 
     #### Episodic Plot ####
-    # plot_seeds(
-    #     save_path="ckpt/TwoStep_60", 
-    #     load_path="ckpt/TwoStep_60", 
-    #     mode=None, 
-    #     y_lim=0.5, 
-    #     n_seeds=8, 
-    #     title="Incremental"
-    # )
+    plot_seeds(
+        save_path="ckpt/TwoStepEp_14", 
+        load_path="ckpt/TwoStepEp_14", 
+        mode="episodic", 
+        y_lim=0, 
+        n_seeds=8, 
+        base_seed=42,
+        title="Episodic"
+    )
 
     #### Compare Training Curves ####
     # plot_rewards_curve(
@@ -194,11 +196,11 @@ if __name__ == "__main__":
     # )
 
     #### Compare Rewards ####
-    compare_rewards(
-        load_path_mrl="./ckpt/TwoStepEp_12",
-        load_path_emrl="./ckpt/TwoStepEp_12",
-        save_path=None,
-        title="Performance" 
-    )
+    # compare_rewards(
+    #     load_path_mrl="./ckpt/TwoStepEp_12",
+    #     load_path_emrl="./ckpt/TwoStepEp_12",
+    #     save_path=None,
+    #     title="Performance" 
+    # )
     
 

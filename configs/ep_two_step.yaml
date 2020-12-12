@@ -1,10 +1,11 @@
-run-title: TwoStepEp_12
-seed: 1111
-save-path: ckpt/TwoStepEp_12
-save-interval: 15_000
+run-title: TwoStepEp_16
+n-seeds: 8
+seed: 42
+save-path: ckpt/TwoStepEp_16
+save-interval: 5000
 resume: true
 start-episode: 10_000
-train: false
+train: true
 test: true
 mode: episodic # {incremental, episodic}
 
@@ -20,7 +21,7 @@ task:
   test-episodes: 500
 
 agent:
-  mem-units: 48
+  mem-units: 24
   dict-len: 100_000
   dict-kernel: cosine
   

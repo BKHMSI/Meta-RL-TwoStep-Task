@@ -20,7 +20,7 @@ Rollout = namedtuple('Rollout',
                         ('state', 'action', 'reward', 'timestep', 'done', 'policy', 'value'))
 
 class Trainer: 
-    def __init__(self, config):
+    def __init__(self, config, noise_idx = None):
         self.device = 'cpu'
         self.seed = config["seed"]
         self.mode = config["mode"]
@@ -35,7 +35,8 @@ class Trainer:
             config["agent"]["mem-units"], 
             self.env.num_actions,
             config["agent"]["dict-len"],
-            config["agent"]["dict-kernel"]
+            config["agent"]["dict-kernel"],
+            noise_idx
         ).to(self.device)
 
         self.optim = T.optim.RMSprop(self.agent.parameters(), lr=config["agent"]["lr"])
@@ -49,10 +50,9 @@ class Trainer:
         self.writer = SummaryWriter(log_dir=os.path.join("logs_ep", config["run-title"]))
         self.save_path = os.path.join(config["save-path"], config["run-title"], config["run-title"]+"_{epi:04d}")
 
-        if config["resume"]:
-            print("> Loading Checkpoint")
-            self.start_episode = config["start-episode"]
-            self.agent.load_state_dict(T.load(self.save_path.format(epi=self.start_episode) + ".pt")["state_dict"])
+        print("> Loading Checkpoint")
+        self.start_episode = config["start-episode"]
+        self.agent.load_state_dict(T.load(self.save_path.format(epi=self.start_episode) + ".pt")["state_dict"])
 
     def run_episode(self, episode):
         done = False
@@ -95,7 +95,7 @@ class Trainer:
             action_onehot = np.eye(2)[action]
 
             # take action and observe result
-            new_state, reward, done, timestep, context = self.env.step(int(action), cue.numpy())
+            new_state, reward, done, timestep, context = self.env.step(int(action), cue.cpu().numpy())
 
             context = T.tensor(context, device=self.device)
             self.agent.save_memory(context, c_t)
@@ -133,98 +133,17 @@ class Trainer:
 
         return total_reward, buffer
 
-    def a2c_loss(self, buffer, gamma, lambd=1.0):
-        # bootstrap discounted returns with final value estimates
-        _, _, _, _, _, _, last_value = buffer[-1]
-        returns = last_value.data
-        advantages = 0
-
-        all_returns = T.zeros(len(buffer)-1, device=self.device)
-        all_advantages = T.zeros(len(buffer)-1, device=self.device)
-        # run Generalized Advantage Estimation, calculate returns, advantages
-        for t in reversed(range(len(buffer) - 1)):
-            # ('state', 'action', 'reward', 'timestep', 'done', 'policy', 'value')
-            _, _, reward, _, done, _, value = buffer[t]
-
-            _, _, _, _, _, _, next_value = buffer[t+1]
-
-            mask = ~done
-
-            returns = reward + returns * gamma * mask
-
-            deltas = reward + next_value.data * gamma * mask - value.data
-            advantages = advantages * gamma * lambd * mask + deltas
-
-            all_returns[t] = returns 
-            all_advantages[t] = advantages
-
-        batch = Rollout(*zip(*buffer))
-
-        policy = T.cat(batch.policy[:-1], dim=0).squeeze().to(self.device)
-        action = T.tensor(batch.action[:-1], device=self.device)
-        values = T.tensor(batch.value[:-1], device=self.device)
-        
-        logits = (policy * action).sum(1)
-        policy_loss = -(T.log(logits) * all_advantages).mean()
-        value_loss = 0.5 * (all_returns - values).pow(2).mean()
-        entropy_reg = -(policy * T.log(policy)).mean()
-
-        loss = self.val_coeff * value_loss + policy_loss - self.entropy_coeff * entropy_reg
-
-        return loss 
-
-    def log_reinstatment_gate(self, episode):
-        rt, it, ft = self.agent.get_gates()
-        for gate_idx in range(len(rt)):
-            self.writer.add_scalar(f"gates/rt/{gate_idx}", rt[gate_idx], episode)
-            self.writer.add_scalar(f"gates/it/{gate_idx}", it[gate_idx], episode)
-            self.writer.add_scalar(f"gates/ft/{gate_idx}", ft[gate_idx], episode)
-        self.agent.ep_lstm.reset_gate_monitor()
-
-    def train(self, max_episodes, gamma, save_interval):
-
-        total_rewards = np.zeros(max_episodes)
-        progress = tqdm(range(self.start_episode, max_episodes))
-
-        for episode in progress:
-
-            reward, buffer = self.run_episode(episode)
-            self.log_reinstatment_gate(episode)
-
-            self.optim.zero_grad()
-            loss = self.a2c_loss(buffer, gamma) 
-            loss.backward()
-            if self.max_grad_norm > 0:
-                grad_norm = nn.utils.clip_grad_norm_(self.agent.parameters(), self.max_grad_norm)
-            self.optim.step()
-
-            total_rewards[episode] = reward
-
-            avg_reward_10 = total_rewards[max(0, episode-10):(episode+1)].mean()
-            avg_reward_100 = total_rewards[max(0, episode-100):(episode+1)].mean()
-            self.writer.add_scalar("perf/reward_t", reward, episode)
-            self.writer.add_scalar("perf/avg_reward_10", avg_reward_10, episode)
-            self.writer.add_scalar("perf/avg_reward_100", avg_reward_100, episode)
-            self.writer.add_scalar("losses/total_loss", loss.item(), episode)
-            if self.max_grad_norm > 0:
-                self.writer.add_scalar("losses/grad_norm", grad_norm, episode)
-            progress.set_description(f"Episode {episode}/{max_episodes} | Reward: {reward} | Last 10: {avg_reward_10:.4f} | Loss: {loss.item():.4f}")
-
-            if (episode+1) % save_interval == 0:
-                T.save({
-                    "state_dict": self.agent.state_dict(),
-                    "avg_reward_100": avg_reward_100,
-                    'last_episode': episode,
-                }, self.save_path.format(epi=episode+1) + ".pt")
-
-
     def test(self, num_episodes):
         progress = tqdm(range(num_episodes))
         self.env.reset_transition_count()
         self.agent.eval()
         total_rewards = np.zeros(num_episodes)
+        rt_list = []
         for episode in progress:
             reward, _ = self.run_episode(episode)
+            rt, _, _ = self.agent.get_gates()
+            self.agent.ep_lstm.reset_gate_monitor()
+            rt_list += [rt]
             total_rewards[episode] = reward
             avg_reward = total_rewards[max(0, episode-10):(episode+1)].mean()            
             progress.set_description(f"Episode {episode}/{num_episodes} | Reward: {reward} | Last 10: {avg_reward:.4f}")
@@ -235,7 +154,7 @@ class Trainer:
         elif self.mode == "episodic":
             self.env.plot(self.save_path.format(epi=self.seed) + "_episodic", self.env.transition_count_episodic, "Episodic", y_lim=0)
 
-        return self.env.total_reward_cued / (num_episodes*50), self.env.total_reward_uncued / (num_episodes*50)
+        return rt_list, self.env.total_reward_cued / (num_episodes*50), self.env.total_reward_uncued / (num_episodes*50)
 
 if __name__ == "__main__":
 
@@ -249,6 +168,7 @@ if __name__ == "__main__":
     n_seeds = config["n-seeds"]
     base_seed = config["seed"]
     base_run_title = config["run-title"]
+    threshold = 0.2
 
     reward_cued = np.zeros(n_seeds)
     reward_uncued = np.zeros(n_seeds)
@@ -267,10 +187,15 @@ if __name__ == "__main__":
 
         print(f"> Running {config['run-title']}")
         trainer = Trainer(config)
-        if config["train"]:
-            trainer.train(config["task"]["train-episodes"], config["agent"]["gamma"], config["save-interval"])
-        if config["test"]:
-            reward_cued[seed_idx-1], reward_uncued[seed_idx-1] = trainer.test(config["task"]["test-episodes"])
+        rt, _, _ = trainer.test(config["task"]["test-episodes"])
+        rt = np.array(rt).mean(axis=0)
+        rt_select = np.arange(config["agent"]["mem-units"])[rt >= 1-threshold]
+
+        print(f"{len(rt_select)}/{len(rt)}")
+
+
+        # trainer = Trainer(config, noise_idx=rt_select)
+        # _, reward_cued[seed_idx-1], reward_uncued[seed_idx-1] = trainer.test(config["task"]["test-episodes"])
 
 
     save_path = os.path.join(config["save-path"], "reward_cued.npy")

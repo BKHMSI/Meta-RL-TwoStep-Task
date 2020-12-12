@@ -47,31 +47,43 @@ class EpLSTMCell(nn.Module):
 
     def __init__(
             self,
-            input_size: int,
-            args,
+            input_size                  : int,
+            hidden_size                 : int,
+            vertical_dropout            : float = 0.0,
+            recurrent_dropout           : float = 0.0,
+            recurrent_dropout_mode      : str   = 'gal_tied',
+            recurrent_activation        : str   = 'sigmoid',
+            tied_forget_gate            : bool  = False,
+            noise_idx                   : list  = None,
+            noise_level                 : int   = 0
+
     ):
         super().__init__()
-        self._args = args
         self.Dx = input_size
-        self.Dh = args.hidden_size
+        self.Dh = hidden_size
         self.recurrent_kernel = nn.Linear(self.Dh, self.Dh * N_GATES)
         self.input_kernel     = nn.Linear(self.Dx, self.Dh * N_GATES)
 
-        self.recurrent_dropout_p    = args.recurrent_dropout or 0.0
-        self.vertical_dropout_p     = args.vertical_dropout or 0.0
-        self.recurrent_dropout_mode = args.recurrent_dropout_mode
+        self.recurrent_dropout_p    = recurrent_dropout or 0.0
+        self.vertical_dropout_p     = vertical_dropout or 0.0
+        self.recurrent_dropout_mode = recurrent_dropout_mode
         
         self.recurrent_dropout = nn.Dropout(self.recurrent_dropout_p)
         self.vertical_dropout  = nn.Dropout(self.vertical_dropout_p)
 
-        self.tied_forget_gate = args.tied_forget_gate
+        self.tied_forget_gate = tied_forget_gate
 
-        if isinstance(args.recurrent_activation, str):
-            self.fun_rec = ACTIVATIONS[args.recurrent_activation]
+        if isinstance(recurrent_activation, str):
+            self.fun_rec = ACTIVATIONS[recurrent_activation]
         else:
-            self.fun_rec = args.recurrent_activation
+            self.fun_rec = recurrent_activation
+
+        self.noise_idx = noise_idx
+        self.noise_level = noise_level
 
         self.reset_parameters_()
+        self.reset_gate_monitor()
+
 
     # @T.jit.ignore
     def get_recurrent_weights(self):
@@ -159,28 +171,22 @@ class EpLSTMCell(nn.Module):
 
         rt = self.fun_rec(Xr + Hr)
 
+        self.rt_gate += [rt.view(-1).detach().cpu().numpy()]
+        self.it_gate += [it.view(-1).detach().cpu().numpy()]
+        self.ft_gate += [ft.view(-1).detach().cpu().numpy()]
+
         ct = (ft * c_tm1) + (it * gt) + (rt * T.tanh(mt))
+
+        # if self.noise_idx is not None and self.noise_level > 0:
+            # noise = T.randn(len(self.noise_idx))
+            # ct[:, self.noise_idx] = ct[:, self.noise_idx] + noise * self.noise_level
+            # ct[:, self.noise_idx] = 0
 
         ht = ot * T.tanh(ct)
 
         return ht, (ht, ct)
 
-    @T.jit.export
-    def loop(self, inputs, memories, state_t0, mask=None):
-        # type: (Tensor, Tensor, Tuple[Tensor, Tensor], Optional[List[Tensor]]) -> Tuple[List[Tensor], Tuple[Tensor, Tensor]]
-        '''
-        This loops over t (time) steps
-        '''
-        #^ inputs      : t * [b i]
-        #^ memories    : t * [b i]
-        #^ state_t0[i] : [b s]
-        #^ out         : [t b h]
-        state = state_t0
-        outs = []
-
-        for xt, mt in zip(inputs, memories):
-            ht, state = self(xt, mt, state)
-            outs.append(ht)
-
-        return outs, state
-
+    def reset_gate_monitor(self):
+        self.rt_gate = []
+        self.it_gate = []
+        self.ft_gate = []
